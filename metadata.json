@@ -1,0 +1,6 @@
+{
+  "name": "Pixel Art Maker",
+  "description": "Upload an image and instantly transform it into a retro pixel art style.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
