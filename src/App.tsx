@@ -4,48 +4,60 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const pixelateImage = (file: File, level: number): Promise<Blob> => {
   return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
     const img = new Image();
+    
     img.onload = () => {
-      URL.revokeObjectURL(img.src);
-      
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas tidak didukung'));
-        return;
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Render gambar tidak didukung');
+
+        const MAX_DIMENSION = 2000;
+        let w = img.width || 1;
+        let h = img.height || 1;
+        
+        if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+          const ratio = Math.min(MAX_DIMENSION / w, MAX_DIMENSION / h);
+          w = Math.floor(w * ratio);
+          h = Math.floor(h * ratio);
+        }
+
+        const block = Math.max(1, Math.min(level, 40));
+        const smallW = Math.max(1, Math.floor(w / block));
+        const smallH = Math.max(1, Math.floor(h / block));
+
+        const smallCanvas = document.createElement('canvas');
+        smallCanvas.width = smallW;
+        smallCanvas.height = smallH;
+        const smallCtx = smallCanvas.getContext('2d');
+        if (!smallCtx) throw new Error('Render piksel gagal');
+        
+        smallCtx.imageSmoothingEnabled = false;
+        smallCtx.drawImage(img, 0, 0, smallW, smallH);
+
+        canvas.width = w;
+        canvas.height = h;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(smallCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
+
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(objectUrl);
+          if (blob) resolve(blob);
+          else reject(new Error('Gagal merender gambar'));
+        }, file.type || 'image/png');
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        reject(err);
       }
-
-      const block = Math.max(1, Math.min(level, 40));
-      const smallW = Math.max(1, Math.floor(img.width / block));
-      const smallH = Math.max(1, Math.floor(img.height / block));
-
-      const smallCanvas = document.createElement('canvas');
-      smallCanvas.width = smallW;
-      smallCanvas.height = smallH;
-      const smallCtx = smallCanvas.getContext('2d');
-      if (!smallCtx) {
-        reject(new Error('Canvas tidak didukung'));
-        return;
-      }
-      
-      smallCtx.imageSmoothingEnabled = false;
-      smallCtx.drawImage(img, 0, 0, smallW, smallH);
-
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(smallCanvas, 0, 0, smallW, smallH, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Gagal mengonversi gambar'));
-      }, file.type || 'image/png');
     };
+    
     img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error('Gagal memuat gambar'));
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('File rusak atau tidak terbaca'));
     };
-    img.src = URL.createObjectURL(file);
+    
+    img.src = objectUrl;
   });
 };
 
@@ -103,9 +115,10 @@ export default function App() {
     setProcessingTimeLeft(3);
 
     const startTime = Date.now();
+    let timer: any;
 
     try {
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         setProcessingTimeLeft((prev) => Math.max(0, prev - 1));
       }, 1000);
 
@@ -117,7 +130,7 @@ export default function App() {
       setTimeout(() => {
         clearInterval(timer);
         if (!blob) {
-          setError('Gagal memproses gambar');
+          setError('Render gagal, coba gambar lain.');
         } else {
           const resultUrl = URL.createObjectURL(blob);
           setPreviewResult(resultUrl);
@@ -127,7 +140,8 @@ export default function App() {
       }, remainingTime);
 
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan');
+      if (timer) clearInterval(timer);
+      setError(err.message || 'Terjadi kesalahan tidak terduga');
       setIsLoading(false);
       setProcessingTimeLeft(0);
     }
@@ -145,7 +159,6 @@ export default function App() {
 
   return (
     <>
-      {/* Intro Overlay Animation */}
       <AnimatePresence>
         {showIntro && (
           <motion.div
@@ -171,16 +184,13 @@ export default function App() {
 
       <div className="min-h-screen bg-[#0b0c10] text-[#8a8d98] font-sans selection:bg-[#c4f135] selection:text-black pb-12 relative overflow-hidden">
         
-        {/* Subtle Grid Pattern Background */}
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGRlZnM+PHBhdHRlcm4gaWQ9InB4IiB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiPjxwYXRoIGQ9Ik0gNDAgMCBMIDAgMCBMIDAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsIDI1NSwgMjU1LCAwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3B4KSIvPjwvc3ZnPg==')] pointer-events-none z-0"></div>
 
-        {/* Ambient Glow */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#c4f135]/5 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-[#c4f135]/5 blur-[100px] rounded-full pointer-events-none" />
 
         <div className="max-w-6xl mx-auto px-6 pt-8 relative z-10">
           
-          {/* Header */}
           <motion.header 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -190,17 +200,16 @@ export default function App() {
             <div>
                <h2 className="text-[#c4f135] font-bold tracking-widest text-xs uppercase mb-3 flex items-center gap-2">
                  <span className="w-1.5 h-1.5 rounded-full bg-[#c4f135]"></span>
-                 Ubah cepat & instan
+                 Ubah instan & gratis
                </h2>
                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-2 leading-tight">
                  ToPixel <br/>
-                 <span className="text-[#c4f135]">seni 8-bit</span> untuk semua.
+                 <span className="text-[#c4f135]">8-bit art</span> dari fotomu
                </h1>
             </div>
             
             <p className="max-w-xs md:max-w-sm text-sm sm:text-base leading-relaxed text-[#8a8d98]">
-              Ubah foto apapun menjadi seni Pixel bergaya retro secara instan.
-              Cepat, mudah, dan langsung terlihat hasilnya.
+              Bikin foto biasa jadi pixel art keren ala game retro jadul. Cepat, gampang, dan gratis.
             </p>
           </motion.header>
 
@@ -210,9 +219,7 @@ export default function App() {
              transition={{ delay: 2.0 }}
              className="grid lg:grid-cols-[380px_1fr] gap-8 items-start"
           >
-            {/* Controls Sidebar */}
             <div className="space-y-6">
-              {/* Upload Box */}
               <div className="bg-[#13141b] p-6 rounded-3xl border border-[#262833] shadow-lg hover:border-[#383b4a] transition-all">
                 <h2 className="text-base font-bold mb-4 text-white flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-[#1e2029] flex items-center justify-center text-xs text-[#c4f135]">01.</span>
@@ -313,11 +320,11 @@ export default function App() {
                       {isLoading ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin" />
-                          MEMPROSES... {processingTimeLeft > 0 ? `(${processingTimeLeft}s)` : ''}
+                          PROCESSING... {processingTimeLeft > 0 ? `(${processingTimeLeft}s)` : ''}
                         </>
                       ) : (
                         <>
-                          UBAH JADI PIKSEL <ArrowRight className="w-4 h-4 ml-1" />
+                          GENERATE PIXEL ART <ArrowRight className="w-4 h-4 ml-1" />
                         </>
                       )}
                     </button>
@@ -392,7 +399,7 @@ export default function App() {
                           <div className="w-16 h-16 border-2 border-dashed border-[#262833] rounded-2xl flex items-center justify-center bg-[#1e2029] shadow-sm">
                              <Sparkles className="w-6 h-6 opacity-40 text-[#8a8d98]" />
                           </div>
-                          <span className="text-sm font-semibold">Belum ada hasil</span>
+                          <span className="text-sm font-semibold">Preview hasil di sini</span>
                         </div>
                       )}
                     </div>
@@ -409,15 +416,14 @@ export default function App() {
                        <div className="absolute inset-0 bg-[#c4f135]/10 rounded-3xl blur-md"></div>
                       <ImageIcon className="w-8 h-8 text-[#8a8d98] relative z-10" />
                     </motion.div>
-                    <h3 className="text-lg font-bold text-white mb-2 tracking-tight">Belum ada gambar</h3>
+                    <h3 className="text-lg font-bold text-white mb-2 tracking-tight">Menunggu Gambar...</h3>
                     <p className="text-[#8a8d98] text-sm leading-relaxed font-medium">
-                      Unggah sebuah gambar di panel sebelah kiri untuk memulai pembuatan seni piksel bergaya retro.
+                      Upload fotomu di sebelah kiri dulu, biar kita proses jadi pixel art keren.
                     </p>
                   </div>
                 </div>
               )}
               
-              {/* Footer actions */}
               <AnimatePresence>
                 {previewResult && (
                   <motion.div 
@@ -427,11 +433,11 @@ export default function App() {
                     className="border-t border-[#262833] p-5 bg-[#13141b]/90 flex justify-end relative z-10 backdrop-blur-xl"
                   >
                     <button
-                      onClick={handleDownload}
+                       onClick={handleDownload}
                       className="px-6 py-2.5 bg-[#c4f135] hover:bg-[#c4f135]/90 text-black rounded-xl transition-all font-bold tracking-wide flex items-center gap-2 text-sm shadow-sm"
                     >
                       <Download className="w-4 h-4" />
-                      UNDUH GAMBAR
+                      SIMPAN GAMBAR
                     </button>
                   </motion.div>
                 )}
