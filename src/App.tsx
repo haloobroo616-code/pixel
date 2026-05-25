@@ -2,6 +2,53 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Image as ImageIcon, Download, Loader2, ArrowRight, Sparkles, ZoomIn, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const pixelateImage = (file: File, level: number): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas tidak didukung'));
+        return;
+      }
+
+      const block = Math.max(1, Math.min(level, 40));
+      const smallW = Math.max(1, Math.floor(img.width / block));
+      const smallH = Math.max(1, Math.floor(img.height / block));
+
+      const smallCanvas = document.createElement('canvas');
+      smallCanvas.width = smallW;
+      smallCanvas.height = smallH;
+      const smallCtx = smallCanvas.getContext('2d');
+      if (!smallCtx) {
+        reject(new Error('Canvas tidak didukung'));
+        return;
+      }
+      
+      smallCtx.imageSmoothingEnabled = false;
+      smallCtx.drawImage(img, 0, 0, smallW, smallH);
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(smallCanvas, 0, 0, smallW, smallH, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Gagal mengonversi gambar'));
+      }, file.type || 'image/png');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Gagal memuat gambar'));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+};
+
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
   const [file, setFile] = useState<File | null>(null);
@@ -55,10 +102,6 @@ export default function App() {
     setError(null);
     setProcessingTimeLeft(3);
 
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('pixelLevel', pixelLevel.toString());
-
     const startTime = Date.now();
 
     try {
@@ -66,22 +109,14 @@ export default function App() {
         setProcessingTimeLeft((prev) => Math.max(0, prev - 1));
       }, 1000);
 
-      const response = await fetch('/api/pixelate', {
-        method: 'POST',
-        body: formData,
-      });
-
-      let blob: Blob | null = null;
-      if (response.ok) {
-        blob = await response.blob();
-      }
+      const blob = await pixelateImage(file, pixelLevel);
 
       const elapsed = Date.now() - startTime;
       const remainingTime = Math.max(0, 3000 - elapsed);
 
       setTimeout(() => {
         clearInterval(timer);
-        if (!response.ok || !blob) {
+        if (!blob) {
           setError('Gagal memproses gambar');
         } else {
           const resultUrl = URL.createObjectURL(blob);
